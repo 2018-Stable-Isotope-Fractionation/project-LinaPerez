@@ -1,0 +1,271 @@
+---
+title: "Elevation Isotope Model"
+author: "Lina Pérez Angel"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    code_folding: show
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r "setup", warning=FALSE, message=FALSE}
+library(tidyverse)
+library(deSolve)
+library(isotopia)
+knitr::opts_chunk$set(eval = FALSE)
+
+# helper functions and model definitions
+source(file.path("libs", "calculations.R"))
+source(file.path("libs", "model.R"))
+```
+
+# Parameters
+
+## Saturation vapor pressure
+
+```{r}
+data_frame(
+  Temp.C = seq(-50, 30),
+  es = calc_es(calc_Temp.K(Temp.C))
+) %>% 
+  ggplot() + aes(Temp.C, es/100) +
+  geom_line() + 
+  labs(y = "saturation vapor pressure [mbar]") 
+```
+
+at less temperature the saturation of vapor needs less pressure to condensate. As elevation is increasing the temperature decrease, and the surface pressure too, so the saturation of vapor pressure will condensate easily at higher elevations.
+
+
+
+## fractionation factor
+
+```{r}
+data_frame(
+  Temp.C = seq(-50, 30, by = 5),
+  Temp.K = calc_Temp.K(Temp.C),
+  alpha_ice_vapor = calc_O_alpha_i_v(Temp.K),
+  alpha_water_vapor = calc_O_alpha_l_v(Temp.K),
+  alpha_overall = calc_O_alpha(Temp.K)
+) %>% 
+  gather(type, alpha, starts_with("alpha")) %>% 
+  ggplot() + aes(Temp.C, alpha, color = type, linetype = type) + 
+  geom_line()
+```
+
+What is the difference between the fractionation factor of vapor-ice and vapor-liquid?
+
+ what is the green line?
+
+
+
+## Saturation mass mixing ratio and relative humidity
+
+```{r}
+p_start <- 101325 # in Pascal (sealevel pressure)
+Temp.C <- 20 # starting temperature
+RH <- 0.8 # relative humidity [dimensionless] at sealevel
+
+str_interp(
+  "At temperature of $[.1f]{Temp.C} C and air pressure of $[.4f]{air_pressure} bar, the air gets saturated with water vapor at mass mixing ratio of $[.2f]{mixing_ratio}% (m vapor/m air). This is a relative humidity of 100% (by defintion).\nAt relative humidity of $[.1f]{rel_hum}%, the water vapor mass mixing ratio is $[.2f]{mixing_ratio2}% (m vapor/m air).",
+  list(
+    Temp.C = Temp.C, air_pressure = p_start/100000, 
+    mixing_ratio = calc_qs(calc_es(calc_Temp.K(Temp.C)), p_start)*100,
+    rel_hum = RH*100,
+    mixing_ratio2 = calc_q_from_RH(RH, calc_es(calc_Temp.K(Temp.C)), p_start)*100
+  )
+) %>% 
+  message()
+```
+
+Relative Humidity is fundamental in our precipitation model, it will determine how much precipitation we will have 
+
+# Model
+
+```{r}
+# constants
+g <- 9.80665 # gravitational constant [m s-2]
+mass_air <- 28.97/1000 # molecular weight of air [kg mol-1]
+R <- 8.314 # ideal gas constant [m3 Pa K−1 mol−1 = m2 s−2 K−1 kg mol−1]
+R_air <- R/mass_air # ideal gas constant for air [m2 s−2 K−1 kg mol−1 kg-1 mol = m2 s-2 K-1]
+Cp_air <- 1.0035*1000 # heat capacity of air [J kg-1 K-1 = kg m2 s-2 kg-1 K-1 = m2 s-2 K-1]
+dz <- 10 # vertical step size [m]
+max_height <- 10000 # maximum altitute [m]
+
+# paramters
+parameters <- 
+  tribble(
+    # scenario name, surface pressure [Pa], surface temperature [C], relative humidity, isotopic composition of intitial vapor [permil]
+    ~scenario,     ~p_start,   ~T_start,   ~RH,     ~delta_vapor,
+    "Scenario 1",  101325,     20,         0.8,     -12
+  ) 
+parameters
+```
+
+
+## Solve first scenario
+
+first with Oxygen isotopes ("18O")
+
+```{r}
+run1 <- run_model(parameters, isotope = "18O")
+model_base_plot %+% run1
+```
+
+now with Hydrogen Isotopes ("2H")
+
+```{r}
+run1 <- run_model(parameters, isotope = ????? )
+model_base_plot %+% run1
+```
+
+What represent the horizontal solid black line?
+
+
+What is the relationship of vapor fraction and Temperature with altitude?
+
+
+what’s the difference between the two last plots?
+
+
+## Solve 2nd scenario -RH
+
+Isotopic composition of precipitation with different relative humidity settings. 
+Boulder, Colorado has an average relative humidity of 40%
+Bogotá, Colombia has an average relative humidity of 80%
+
+let’s look at the difference in isotopic composition of oxygen between these two places!
+
+
+```{r}
+# paramters
+parameters2 <- 
+  tribble(
+    # scenario name, surface pressure [Pa], surface temperature [C], relative humidity, isotopic composition of intitial vapor [permil]
+    ~scenario,       ~p_start,   ~T_start,   ~RH,     ~delta_vapor,
+    "high humidity",  101325,     20,         ????,     -12,
+    "low humidity",   101325,     20,         ????,     -12
+  ) 
+
+run2 <- run_model(parameters2, isotope = "18O")
+model_base_plot %+% run2
+```
+
+What is the most important difference between a high and low humidity place? 
+
+
+
+## Solve 3nd scenario -Temperature 
+
+low latitude mean temperature: 300K (26.85ºC)
+Himalayas mean temperature: 291K (17.85ºC)
+
+```{r}
+# paramters
+parameters3 <- 
+  tribble(
+    # scenario name, surface pressure [Pa], surface temperature [C], relative humidity, isotopic composition of intitial vapor [permil]
+    ~scenario,       ~p_start,   ~T_start,   ~RH,     ~delta_vapor,
+    "Tropical Andes", 101325,     ????,         0.8,     -12,
+    "Himalayas",      101325,     ????,         0.8,     -12
+  ) 
+
+run3 <- run_model(parameters3, isotope = "18O")
+model_base_plot %+% run3
+```
+
+What is the most important difference between the tropics and mid latitudes in temperature?
+
+
+# Real Data! 
+
+from the paper:
+
+ - "Himalayas - Lasha (3649m)  -15.4 permil
+ - "Himalayas - New Delhi (212m)   -5.8 permil
+
+another example:
+
+ - "Andes - Bogota (2547m)  -9.5 permil
+ - "Andes - Sao Gabriel" (87m)    -4.65 permil
+    
+```{r}
+real_data <- 
+  tribble(
+    ~location,   ~city,         ~z,    ~value,
+    "Himalayas", "Lasha",       ????,  -15.4,
+    "Himalayas", "New Delhi",   ????,   ???,
+    "Andes",     "Bogota",      ????,   ???,
+    "Andes",     "Sao Gabriel", ????,   -4.65
+  ) %>% 
+  mutate(
+    scenario = "real data",
+    variable = "Delta 18O condensate [permil]",
+    panel = "Delta 18O [permil]"
+  )
+real_data
+
+
+parameters4 <- 
+  tribble(
+    # scenario name, surface pressure [Pa], surface temperature [C], relative humidity, isotopic composition of intitial vapor [permil]
+    ~scenario,             ~p_start,   ~T_start,   ~RH,     ~delta_vapor,
+    "Himalayas",           101325,     17.85,         0.8,      -20,
+    "Andes",               101325,     26.85,         0.95,     -16
+  ) 
+
+run4 <- run_model(parameters4, isotope = "18O")
+model_base_plot %+% filter(run4, panel == "Delta 18O [permil]") +
+  geom_point(data = real_data, aes(shape = location), size = 3) +
+  geom_label(data = real_data, aes(label = city), vjust = 0.3, hjust = 1.4, size = 3)
+```
+
+how well they fit on each curve?
+
+ 
+
+## Find elevation differences
+
+- scenario 1: Mid-latitude temperature (18ºC)
+- scenario 2: Tropical temperature (26ºC)
+
+```{r}
+fitting_parameters <- 
+  tribble(
+    ~scenario,     ~p_start,   ~T_start,   ~RH,     ~delta_vapor,
+    "Scenario 1",  101325,     ????,         0.8,     -12,
+    "Scenario 2",  101325,     ????,         0.8,     -12
+  ) 
+
+fit_run <- run_model(fitting_parameters, "18O")
+
+# fit to real data
+data_fits <- real_data %>% 
+  group_by(city) %>% 
+  do({
+    target_delta <- .$value
+    fit_run %>% 
+      filter(variable == "Delta 18O condensate [permil]", !is.na(value)) %>% 
+      group_by(scenario, delta_vapor, RH, T_start) %>% 
+      summarize(
+        z_fit = z[abs(value - target_delta) == min(abs(value - target_delta))]
+      )
+  }) %>% left_join(select(real_data, -scenario, -variable, -panel), by = "city")
+
+data_fits
+
+data_fits %>% 
+  group_by(location, scenario, delta_vapor, RH, T_start) %>% 
+  summarise(real_dz = max(z) - min(z), model_dz = max(z_fit) - min(z_fit))
+```
+
+1. Compare the elevation model fit of each site with the real elevation. What do you see?
+
+
+
+2. and now compare the difference between the lowland site and highland site of each location in each scenario. What do you see?
+
