@@ -17,7 +17,6 @@ editor_options:
 library(tidyverse)
 library(deSolve)
 library(isotopia)
-knitr::opts_chunk$set(eval = FALSE)
 
 # helper functions and model definitions
 source(file.path("libs", "calculations.R"))
